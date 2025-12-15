@@ -142,78 +142,56 @@ python -m techannel_push
 cd web && npm run dev
 ```
 
-## Docker 部署
+## Docker 部署（推荐）
 
-### 使用 Docker Compose（推荐）
+**零配置启动**：克隆项目后直接运行，无需任何配置文件！
 
 ```bash
+# 克隆项目
+git clone https://github.com/yourname/TeChannel-push.git
+cd TeChannel-push
+
 # 构建并启动
 docker-compose up -d
 
 # 查看日志
 docker-compose logs -f
-
-# 停止服务
-docker-compose down
 ```
 
-### 手动构建 Docker 镜像
+启动后访问 http://localhost:8000，使用默认密码 `admin123` 登录。
+
+在「系统设置」页面配置：
+- Bot Token（从 @BotFather 获取）
+- 管理员 ID（可选）
+- 修改登录密码（建议）
+
+### Docker 常用命令
 
 ```bash
-# 构建镜像
-docker build -t techannel-push .
-
-# 运行容器
-docker run -d \
-  --name techannel-push \
-  -p 8000:8000 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  -e USE_POLLING=true \
-  -e TIMEZONE=Asia/Shanghai \
-  techannel-push
+docker-compose up -d        # 后台启动
+docker-compose down         # 停止服务
+docker-compose logs -f      # 查看日志
+docker-compose restart      # 重启服务
+docker-compose pull && docker-compose up -d  # 更新镜像
 ```
 
-### Docker 环境变量
+### 生产环境配置
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `USE_POLLING` | 是否使用轮询模式 | `true` |
-| `WEBHOOK_URL` | Webhook 地址（生产环境） | - |
-| `WEBHOOK_SECRET` | Webhook 密钥 | - |
-| `API_HOST` | API 监听地址 | `0.0.0.0` |
-| `API_PORT` | API 监听端口 | `8000` |
-| `DATABASE_URL` | 数据库连接地址 | SQLite |
-| `TIMEZONE` | 时区 | `Asia/Shanghai` |
-| `LOG_LEVEL` | 日志级别 | `INFO` |
+如需使用 Webhook 模式，修改 `docker-compose.yml`：
+
+```yaml
+environment:
+  - TZ=Asia/Shanghai
+  - USE_POLLING=false
+  - WEBHOOK_URL=https://yourdomain.com/webhook
+  - LOG_LEVEL=WARNING
+```
 
 ### 数据持久化
 
-Docker 容器使用卷挂载来持久化数据：
-- `./data:/app/data` - 数据库文件
-- `./logs:/app/logs` - 日志文件
-
-### 生产环境部署示例
-
-```yaml
-# docker-compose.prod.yml
-version: '3.8'
-
-services:
-  techannel-push:
-    image: techannel-push:latest
-    restart: always
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    environment:
-      - USE_POLLING=false
-      - WEBHOOK_URL=https://yourdomain.com/webhook
-      - WEBHOOK_SECRET=your_secret_here
-      - LOG_LEVEL=WARNING
-```
+数据自动保存在项目目录下：
+- `./data/` - 数据库文件
+- `./logs/` - 日志文件
 
 ## 项目结构
 

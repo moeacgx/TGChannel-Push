@@ -40,7 +40,7 @@ COPY --from=frontend-builder /app/web/dist ./web/dist
 # Create data directory
 RUN mkdir -p /app/data /app/logs
 
-# Set environment variables
+# Set environment variables (all have sensible defaults)
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONIOENCODING=utf-8
 ENV TZ=Asia/Shanghai
