@@ -17,9 +17,10 @@ from techannel_push.api.routes import (
     creatives_router,
     groups_router,
     health_router,
+    settings_router,
     slots_router,
 )
-from techannel_push.bot.bot import bot, dp, setup_handlers
+from techannel_push.bot.bot import bot, dp, setup_handlers, reinit_bot
 from techannel_push.config import get_settings
 from techannel_push.database import init_db
 from techannel_push.scheduler.scheduler import start_scheduler, stop_scheduler, sync_slot_jobs
@@ -34,6 +35,73 @@ logger = logging.getLogger(__name__)
 
 # Global polling task reference
 _polling_task: asyncio.Task | None = None
+
+
+async def restart_bot_with_token(new_token: str) -> dict:
+    """Hot-reload bot with a new token without restarting the entire service.
+
+    This function:
+    1. Stops the current polling task (if running)
+    2. Deletes the old webhook (if in webhook mode)
+    3. Reinitializes the bot with the new token
+    4. Restarts polling or sets new webhook
+
+    Args:
+        new_token: The new bot token
+
+    Returns:
+        dict with status and message
+    """
+    global _polling_task
+
+    import techannel_push.bot.bot as bot_module
+
+    old_bot = bot_module.bot
+    logger.info("Starting bot hot-reload...")
+
+    # Step 1: Stop old polling task if running
+    if settings.use_polling and _polling_task is not None:
+        logger.info("Stopping old polling task...")
+        _polling_task.cancel()
+        try:
+            await _polling_task
+        except asyncio.CancelledError:
+            pass
+        _polling_task = None
+        logger.info("Old polling task stopped")
+
+    # Step 2: Delete old webhook if in webhook mode
+    if old_bot is not None and not settings.use_polling:
+        try:
+            await old_bot.delete_webhook()
+            logger.info("Old webhook deleted")
+        except Exception as e:
+            logger.warning(f"Error deleting old webhook: {e}")
+
+    # Step 3: Reinitialize bot with new token
+    new_bot = await reinit_bot(new_token)
+    if new_bot is None:
+        return {"status": "error", "message": "Failed to initialize bot with new token"}
+
+    # Step 4: Start new polling or set new webhook
+    if settings.use_polling:
+        logger.info("Starting new polling task...")
+        await new_bot.delete_webhook(drop_pending_updates=True)
+        _polling_task = asyncio.create_task(dp.start_polling(new_bot))
+        logger.info("New polling task started")
+    else:
+        webhook_url = settings.webhook_url
+        if not webhook_url:
+            return {"status": "error", "message": "WEBHOOK_URL is required when USE_POLLING=false"}
+        await new_bot.set_webhook(
+            url=webhook_url,
+            secret_token=settings.webhook_secret or None,
+            drop_pending_updates=True,
+        )
+        logger.info(f"New webhook set to {webhook_url}")
+
+    logger.info("Bot hot-reload completed successfully")
+    return {"status": "ok", "message": "Bot reloaded with new token successfully"}
 
 
 @asynccontextmanager
@@ -51,23 +119,26 @@ async def lifespan(app: FastAPI):
     # Setup bot handlers
     setup_handlers()
 
-    # Start bot (polling or webhook)
-    if settings.use_polling:
-        # Polling mode - for local development
-        logger.info("Starting bot in POLLING mode (local dev)")
-        await bot.delete_webhook(drop_pending_updates=True)
-        _polling_task = asyncio.create_task(dp.start_polling(bot))
+    # Start bot only if token is configured
+    if bot is not None:
+        if settings.use_polling:
+            # Polling mode - for local development
+            logger.info("Starting bot in POLLING mode (local dev)")
+            await bot.delete_webhook(drop_pending_updates=True)
+            _polling_task = asyncio.create_task(dp.start_polling(bot))
+        else:
+            # Webhook mode - for production
+            webhook_url = settings.webhook_url
+            if not webhook_url:
+                raise ValueError("WEBHOOK_URL is required when USE_POLLING=false")
+            await bot.set_webhook(
+                url=webhook_url,
+                secret_token=settings.webhook_secret or None,
+                drop_pending_updates=True,
+            )
+            logger.info(f"Webhook set to {webhook_url}")
     else:
-        # Webhook mode - for production
-        webhook_url = settings.webhook_url
-        if not webhook_url:
-            raise ValueError("WEBHOOK_URL is required when USE_POLLING=false")
-        await bot.set_webhook(
-            url=webhook_url,
-            secret_token=settings.webhook_secret or None,
-            drop_pending_updates=True,
-        )
-        logger.info(f"Webhook set to {webhook_url}")
+        logger.warning("Bot not started - token not configured. Configure via Web panel and restart.")
 
     # Start scheduler
     start_scheduler()
@@ -80,16 +151,17 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     stop_scheduler()
 
-    if settings.use_polling and _polling_task:
-        _polling_task.cancel()
-        try:
-            await _polling_task
-        except asyncio.CancelledError:
-            pass
-    else:
-        await bot.delete_webhook()
+    if bot is not None:
+        if settings.use_polling and _polling_task:
+            _polling_task.cancel()
+            try:
+                await _polling_task
+            except asyncio.CancelledError:
+                pass
+        else:
+            await bot.delete_webhook()
 
-    await bot.session.close()
+        await bot.session.close()
 
 
 # Create FastAPI app
@@ -115,6 +187,7 @@ app.include_router(channels_router, prefix="/api")
 app.include_router(groups_router, prefix="/api")
 app.include_router(slots_router, prefix="/api")
 app.include_router(creatives_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
 
 # Static files for web frontend
 # Determine the web dist directory path
@@ -158,6 +231,10 @@ else:
 @app.post("/webhook")
 async def webhook_handler(request: Request) -> dict:
     """Handle incoming Telegram updates via webhook."""
+    # Check if bot is configured
+    if bot is None:
+        return {"ok": False, "error": "Bot not configured"}
+
     # Only process if in webhook mode
     if settings.use_polling:
         return {"ok": False, "error": "Webhook disabled in polling mode"}

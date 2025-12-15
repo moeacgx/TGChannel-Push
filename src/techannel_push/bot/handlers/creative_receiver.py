@@ -7,7 +7,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from techannel_push.config import get_settings
+from techannel_push.config import get_effective_admin_ids, get_settings
 from techannel_push.database import async_session_maker
 from techannel_push.database.models import AdCreative
 
@@ -19,7 +19,7 @@ router = Router(name="creative_receiver")
 
 def is_admin(user_id: int) -> bool:
     """Check if user is an admin."""
-    return user_id in settings.admin_tg_ids
+    return user_id in get_effective_admin_ids()
 
 
 @router.message(Command("start"), F.chat.type == "private")

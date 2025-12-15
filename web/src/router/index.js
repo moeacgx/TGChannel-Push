@@ -30,6 +30,12 @@ const routes = [
     name: 'Creatives',
     component: () => import('@/views/Creatives.vue'),
     meta: { title: '素材管理' }
+  },
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('@/views/Settings.vue'),
+    meta: { title: '系统设置' }
   }
 ]
 
