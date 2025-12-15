@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Node
+web/node_modules/
+web/.npm
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data and logs (will be mounted as volumes)
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.bak
+*.tmp
+.claude/

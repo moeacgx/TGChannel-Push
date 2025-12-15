@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from techannel_push.api.deps import ApiAuth, DbSession
+from techannel_push.api.deps import ApiAuth, DbSession, hash_password, get_stored_password_hash
+from techannel_push.config import DEFAULT_PASSWORD, KEY_API_PASSWORD_HASH
 from techannel_push.database.models import SystemConfig
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -140,3 +141,66 @@ def mask_token(token: str) -> str:
     if len(token) <= 12:
         return "*" * len(token)
     return token[:4] + "*" * (len(token) - 8) + token[-4:]
+
+
+class PasswordUpdate(BaseModel):
+    """Password update model."""
+
+    current_password: str
+    new_password: str
+
+
+class PasswordCheckResponse(BaseModel):
+    """Password check response."""
+
+    is_default: bool  # True if using default password
+
+
+@router.get("/password/status", response_model=PasswordCheckResponse)
+async def check_password_status(db: DbSession, _auth: ApiAuth) -> PasswordCheckResponse:
+    """Check if user is still using default password."""
+    stored_hash = await get_stored_password_hash(db)
+    return PasswordCheckResponse(is_default=stored_hash is None)
+
+
+@router.put("/password")
+async def update_password(data: PasswordUpdate, db: DbSession, _auth: ApiAuth) -> dict:
+    """Update login password."""
+    # Validate new password
+    if not data.new_password or len(data.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters",
+        )
+
+    if data.new_password == data.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password",
+        )
+
+    # Verify current password
+    stored_hash = await get_stored_password_hash(db)
+
+    if stored_hash:
+        # Verify against stored hash
+        if hash_password(data.current_password) != stored_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+    else:
+        # Verify against default password
+        if data.current_password != DEFAULT_PASSWORD:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+
+    # Save new password hash
+    new_hash = hash_password(data.new_password)
+    await set_config_value(db, KEY_API_PASSWORD_HASH, new_hash)
+
+    logger.info("Password updated successfully")
+    return {"status": "ok", "message": "Password updated successfully"}
+

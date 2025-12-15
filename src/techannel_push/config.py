@@ -40,7 +40,6 @@ class Settings(BaseSettings):
     admin_tg_ids: Annotated[list[int], BeforeValidator(parse_admin_ids)] = []
 
     # Web API
-    api_token: str = "changeme"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
@@ -63,6 +62,10 @@ def get_settings() -> Settings:
 # Database config keys
 KEY_BOT_TOKEN = "bot_token"
 KEY_ADMIN_TG_IDS = "admin_tg_ids"
+KEY_API_PASSWORD_HASH = "api_password_hash"
+
+# Default password for first login
+DEFAULT_PASSWORD = "admin123"
 
 
 def get_db_config_sync(key: str) -> str | None:

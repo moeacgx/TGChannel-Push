@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  techannel-push:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: techannel-push
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist database and logs
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      # Bot Mode
+      - USE_POLLING=true
+      # Webhook settings (uncomment for production)
+      # - WEBHOOK_URL=https://yourdomain.com/webhook
+      # - WEBHOOK_SECRET=your_secret_here
+      # API settings
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      # Database (SQLite inside container)
+      - DATABASE_URL=sqlite+aiosqlite:///./data/techannel.db
+      # Timezone
+      - TIMEZONE=Asia/Shanghai
+      - TZ=Asia/Shanghai
+      # Logging
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Optional: Use external network for reverse proxy
+# networks:
+#   default:
+#     external:
+#       name: nginx-proxy

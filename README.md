@@ -35,7 +35,20 @@ Telegram 多频道广告置顶机器人 - 支持槽位管理、定时发布、�
 ### 1. 安装依赖
 
 ```bash
+# 创建虚拟环境
+python -m venv venv
+
+# 激活虚拟环境
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+# 安装 Python 依赖
 pip install -e .
+
+# 安装前端依赖
+cd web && npm install && cd ..
 ```
 
 ### 2. 配置环境变量
@@ -47,28 +60,159 @@ cp .env.example .env
 ```
 
 配置项说明：
-- `BOT_TOKEN`：Telegram Bot Token（从 @BotFather 获取）
+- `BOT_TOKEN`：Telegram Bot Token（可选，也可在 Web 面板配置）
 - `WEBHOOK_URL`：Webhook 地址（如 `https://yourdomain.com/webhook`）
 - `ADMIN_TG_IDS`：管理员 Telegram ID 列表，逗号分隔
-- `API_TOKEN`：Web 面板 API 认证 Token
 - `DATABASE_URL`：数据库连接地址（默认 SQLite）
 
-### 3. 初始化数据库
+### 3. 使用 PM2 启动（推荐）
+
+PM2 是 Node.js 的进程管理器，可以让服务在后台稳定运行。
+
+#### 安装 PM2
 
 ```bash
-python -m techannel_push.cli init-db
+npm install -g pm2
 ```
 
-### 4. 启动服务
+#### 启动服务
 
 ```bash
-python -m techannel_push.main
+# 创建日志目录
+mkdir logs
+
+# 启动所有服务（后端 + 前端）
+pm2 start ecosystem.config.cjs
+
+# 查看运行状态
+pm2 status
+
+# 查看实时日志
+pm2 logs
+
+# 只查看后端日志
+pm2 logs techannel-backend
+
+# 只查看前端日志
+pm2 logs techannel-frontend
 ```
 
-或使用 uvicorn：
+#### PM2 常用命令
 
 ```bash
-uvicorn techannel_push.main:app --host 0.0.0.0 --port 8000
+pm2 status              # 查看所有进程状态
+pm2 logs                # 查看所有日志
+pm2 logs <name>         # 查看指定服务日志
+pm2 restart all         # 重启所有服务
+pm2 restart <name>      # 重启指定服务
+pm2 stop all            # 停止所有服务
+pm2 delete all          # 删除所有进程
+pm2 monit               # 打开监控面板
+```
+
+#### 设置开机自启（可选）
+
+```bash
+# 生成启动脚本
+pm2 startup
+
+# 保存当前进程列表
+pm2 save
+```
+
+### 4. Web 面板登录
+
+- 后端 API: http://localhost:8000
+- 前端面板: http://localhost:3000
+- API 文档: http://localhost:8000/docs
+
+**默认登录密码**: `admin123`
+
+首次登录后请在「系统设置」页面修改密码。
+
+### 5. 直接启动（开发模式）
+
+如果不想用 PM2，也可以手动启动：
+
+```bash
+# 启动后端
+python -m techannel_push
+
+# 另开终端启动前端
+cd web && npm run dev
+```
+
+## Docker 部署
+
+### 使用 Docker Compose（推荐）
+
+```bash
+# 构建并启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+### 手动构建 Docker 镜像
+
+```bash
+# 构建镜像
+docker build -t techannel-push .
+
+# 运行容器
+docker run -d \
+  --name techannel-push \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  -e USE_POLLING=true \
+  -e TIMEZONE=Asia/Shanghai \
+  techannel-push
+```
+
+### Docker 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `USE_POLLING` | 是否使用轮询模式 | `true` |
+| `WEBHOOK_URL` | Webhook 地址（生产环境） | - |
+| `WEBHOOK_SECRET` | Webhook 密钥 | - |
+| `API_HOST` | API 监听地址 | `0.0.0.0` |
+| `API_PORT` | API 监听端口 | `8000` |
+| `DATABASE_URL` | 数据库连接地址 | SQLite |
+| `TIMEZONE` | 时区 | `Asia/Shanghai` |
+| `LOG_LEVEL` | 日志级别 | `INFO` |
+
+### 数据持久化
+
+Docker 容器使用卷挂载来持久化数据：
+- `./data:/app/data` - 数据库文件
+- `./logs:/app/logs` - 日志文件
+
+### 生产环境部署示例
+
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
+
+services:
+  techannel-push:
+    image: techannel-push:latest
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - USE_POLLING=false
+      - WEBHOOK_URL=https://yourdomain.com/webhook
+      - WEBHOOK_SECRET=your_secret_here
+      - LOG_LEVEL=WARNING
 ```
 
 ## 项目结构

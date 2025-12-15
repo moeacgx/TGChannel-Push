@@ -13,6 +13,58 @@
         style="max-width: 600px"
         v-loading="loading"
       >
+        <!-- Password Change Section -->
+        <el-alert
+          v-if="isDefaultPassword"
+          title="安全提醒"
+          type="warning"
+          description="您正在使用默认密码，请尽快修改密码以确保安全。"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 20px"
+        />
+
+        <el-form-item label="当前密码">
+          <el-input
+            v-model="passwordForm.current_password"
+            type="password"
+            placeholder="请输入当前密码"
+            show-password
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item label="新密码">
+          <el-input
+            v-model="passwordForm.new_password"
+            type="password"
+            placeholder="请输入新密码（至少6位）"
+            show-password
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item label="确认新密码">
+          <el-input
+            v-model="passwordForm.confirm_password"
+            type="password"
+            placeholder="请再次输入新密码"
+            show-password
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" @click="changePassword" :loading="savingPassword">
+            修改密码
+          </el-button>
+          <span v-if="isDefaultPassword" style="margin-left: 10px; color: #E6A23C; font-size: 12px;">
+            默认密码: admin123
+          </span>
+        </el-form-item>
+
+        <el-divider />
+
         <!-- Bot Token -->
         <el-form-item label="Bot Token">
           <el-input
@@ -72,20 +124,6 @@
             保存管理员 ID
           </el-button>
         </el-form-item>
-
-        <el-divider />
-
-        <!-- API Token (read-only info) -->
-        <el-form-item label="API Token">
-          <el-input
-            :model-value="apiTokenDisplay"
-            disabled
-            placeholder="在 .env 文件中配置"
-          />
-          <div class="form-tip">
-            Web 面板登录密码，请在 .env 文件中设置 API_TOKEN
-          </div>
-        </el-form-item>
       </el-form>
     </el-card>
   </div>
@@ -95,21 +133,27 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { View, Hide, CircleCheck, CircleClose, Warning } from '@element-plus/icons-vue'
-import api from '../api'
+import api, { setApiToken } from '../api'
 
 const loading = ref(false)
 const savingToken = ref(false)
 const savingAdmins = ref(false)
+const savingPassword = ref(false)
 const showToken = ref(false)
 const tokenConfigured = ref(false)
 const botRunning = ref(false)
+const isDefaultPassword = ref(false)
 
 const form = ref({
   bot_token: '',
   admin_tg_ids: ''
 })
 
-const apiTokenDisplay = ref('******')
+const passwordForm = ref({
+  current_password: '',
+  new_password: '',
+  confirm_password: ''
+})
 
 const fetchSettings = async () => {
   loading.value = true
@@ -124,10 +168,60 @@ const fetchSettings = async () => {
     botRunning.value = res.bot_configured || false
     // Don't show masked token, keep empty for new input
     form.value.bot_token = ''
+
+    // Check password status
+    const pwdStatus = await api.get('/settings/password/status')
+    isDefaultPassword.value = pwdStatus.is_default
   } catch (error) {
     ElMessage.error('获取设置失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     loading.value = false
+  }
+}
+
+const changePassword = async () => {
+  if (!passwordForm.value.current_password) {
+    ElMessage.warning('请输入当前密码')
+    return
+  }
+  if (!passwordForm.value.new_password) {
+    ElMessage.warning('请输入新密码')
+    return
+  }
+  if (passwordForm.value.new_password.length < 6) {
+    ElMessage.warning('新密码至少需要6位')
+    return
+  }
+  if (passwordForm.value.new_password !== passwordForm.value.confirm_password) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+
+  savingPassword.value = true
+  try {
+    const res = await api.put('/settings/password', {
+      current_password: passwordForm.value.current_password,
+      new_password: passwordForm.value.new_password
+    })
+
+    if (res.status === 'ok') {
+      ElMessage.success('密码修改成功！请使用新密码重新登录')
+      // Update stored token
+      setApiToken(passwordForm.value.new_password)
+      // Clear form
+      passwordForm.value = {
+        current_password: '',
+        new_password: '',
+        confirm_password: ''
+      }
+      isDefaultPassword.value = false
+    } else {
+      ElMessage.error(res.message || '修改失败')
+    }
+  } catch (error) {
+    ElMessage.error('修改失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    savingPassword.value = false
   }
 }
 
