@@ -225,9 +225,22 @@ async def publish_to_channel_with_dedup(
 
 
 async def delete_old_message(chat_id: int, message_id: int) -> None:
-    """Delete an old message from a channel."""
+    """Delete an old message from a channel.
+
+    First unpins the message to prevent "Pinned: message deleted" notification residue,
+    then deletes the message.
+    """
     from techannel_push.bot import bot
 
+    # First unpin to avoid "Pinned: message deleted" notification
+    try:
+        await bot.unpin_chat_message(chat_id=chat_id, message_id=message_id)
+        logger.debug(f"Unpinned message {message_id} from {chat_id}")
+    except Exception as e:
+        # Ignore unpin errors - message might not be pinned or already deleted
+        logger.debug(f"Could not unpin message {message_id}: {e}")
+
+    # Then delete the message
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:

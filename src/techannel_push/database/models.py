@@ -101,7 +101,7 @@ class Slot(Base):
     # Relationships
     group: Mapped["ChannelGroup"] = relationship(back_populates="slots")
     creatives: Mapped[list["AdCreative"]] = relationship(
-        back_populates="slot", cascade="all, delete-orphan"
+        back_populates="slot", passive_deletes=True
     )
     placements: Mapped[list["Placement"]] = relationship(
         back_populates="slot", cascade="all, delete-orphan"

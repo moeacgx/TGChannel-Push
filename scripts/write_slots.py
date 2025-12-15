@@ -1,4 +1,8 @@
-"""Slot management endpoints."""
+"""Write updated slots.py file."""
+
+from pathlib import Path
+
+CONTENT = '''"""Slot management endpoints."""
 
 import asyncio
 import logging
@@ -270,3 +274,15 @@ async def clear_slot(slot_id: int, db: DbSession, _auth: ApiAuth) -> dict:
     cleared_count = await clear_slot_messages(db, slot_id)
 
     return {"status": "ok", "message": f"{cleared_count} messages cleared"}
+'''
+
+
+def main():
+    """Write the slots.py file."""
+    target = Path(__file__).parent.parent / "src" / "techannel_push" / "api" / "routes" / "slots.py"
+    target.write_text(CONTENT, encoding="utf-8")
+    print(f"Successfully wrote {target}")
+
+
+if __name__ == "__main__":
+    main()
