@@ -9,7 +9,7 @@ WORKDIR /app/web
 COPY web/package*.json ./
 
 # Install dependencies
-RUN npm install --registry=https://registry.npmmirror.com
+RUN npm install
 
 # Copy source and build
 COPY web/ ./
@@ -32,7 +32,7 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -e .
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist
