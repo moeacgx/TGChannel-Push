@@ -21,13 +21,16 @@ def init_bot() -> Bot | None:
     global bot
     try:
         token = get_effective_bot_token()
+        if not token:
+            logger.warning("Bot not initialized: token not configured")
+            return None
         bot = Bot(
             token=token,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         logger.info("Bot initialized successfully")
         return bot
-    except ValueError as e:
+    except Exception as e:
         logger.warning(f"Bot not initialized: {e}")
         return None
 

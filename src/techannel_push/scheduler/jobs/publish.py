@@ -230,7 +230,8 @@ async def delete_old_message(chat_id: int, message_id: int) -> None:
     First unpins the message to prevent "Pinned: message deleted" notification residue,
     then deletes the message.
     """
-    from techannel_push.bot import bot
+    from techannel_push.bot import get_bot
+    bot = get_bot()
 
     # First unpin to avoid "Pinned: message deleted" notification
     try:

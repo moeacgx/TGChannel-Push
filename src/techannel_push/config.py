@@ -97,7 +97,10 @@ def get_db_config_sync(key: str) -> str | None:
 
 
 def get_effective_bot_token() -> str:
-    """Get bot token from .env or database."""
+    """Get bot token from .env or database.
+
+    Returns empty string if not configured (caller should handle this).
+    """
     settings = get_settings()
 
     # First try .env
@@ -106,12 +109,11 @@ def get_effective_bot_token() -> str:
 
     # Then try database
     db_token = get_db_config_sync(KEY_BOT_TOKEN)
-    if db_token:
-        return db_token
+    if db_token and db_token.strip():
+        return db_token.strip()
 
-    raise ValueError(
-        "Bot token not configured. Please set BOT_TOKEN in .env or configure via Web panel."
-    )
+    # Return empty string instead of raising - let caller decide what to do
+    return ""
 
 
 def get_effective_admin_ids() -> list[int]:

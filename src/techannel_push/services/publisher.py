@@ -23,7 +23,8 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
     Returns:
         The message_id of the published message
     """
-    from techannel_push.bot import bot
+    from techannel_push.bot import get_bot
+    bot = get_bot()
 
     # Build inline keyboard if specified
     reply_markup = None
@@ -77,7 +78,8 @@ async def unpin_message(channel: Channel, message_id: int) -> None:
         channel: The channel
         message_id: The message to unpin
     """
-    from techannel_push.bot import bot
+    from techannel_push.bot import get_bot
+    bot = get_bot()
 
     try:
         await bot.unpin_chat_message(chat_id=channel.tg_chat_id, message_id=message_id)
@@ -92,7 +94,8 @@ async def delete_message(channel: Channel, message_id: int) -> None:
         channel: The channel
         message_id: The message to delete
     """
-    from techannel_push.bot import bot
+    from techannel_push.bot import get_bot
+    bot = get_bot()
 
     try:
         await bot.delete_message(chat_id=channel.tg_chat_id, message_id=message_id)

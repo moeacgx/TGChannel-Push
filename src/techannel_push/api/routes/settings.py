@@ -69,7 +69,8 @@ async def set_config_value(db, key: str, value: str) -> None:
 @router.get("", response_model=SettingsResponse)
 async def get_settings(db: DbSession, _auth: ApiAuth) -> SettingsResponse:
     """Get all system settings."""
-    from techannel_push.bot.bot import bot
+    # Import bot module to get current bot instance (may change after hot-reload)
+    import techannel_push.bot.bot as bot_module
 
     bot_token = await get_config_value(db, KEY_BOT_TOKEN)
     admin_tg_ids = await get_config_value(db, KEY_ADMIN_TG_IDS)
@@ -77,7 +78,7 @@ async def get_settings(db: DbSession, _auth: ApiAuth) -> SettingsResponse:
     return SettingsResponse(
         bot_token=mask_token(bot_token) if bot_token else None,
         admin_tg_ids=admin_tg_ids,
-        bot_configured=bot is not None,
+        bot_configured=bot_module.bot is not None,
     )
 
 
@@ -91,6 +92,11 @@ async def check_bot_token(db: DbSession, _auth: ApiAuth) -> dict:
 @router.put("/bot-token")
 async def update_bot_token(data: BotTokenUpdate, db: DbSession, _auth: ApiAuth) -> dict:
     """Update bot token and hot-reload the bot."""
+    import asyncio
+    import techannel_push.bot.bot as bot_module
+    from techannel_push.bot.bot import dp, reinit_bot
+    from techannel_push.config import get_settings
+
     if not data.bot_token or not data.bot_token.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -98,6 +104,7 @@ async def update_bot_token(data: BotTokenUpdate, db: DbSession, _auth: ApiAuth) 
         )
 
     new_token = data.bot_token.strip()
+    settings = get_settings()
 
     # Save to database first
     await set_config_value(db, KEY_BOT_TOKEN, new_token)
@@ -105,15 +112,60 @@ async def update_bot_token(data: BotTokenUpdate, db: DbSession, _auth: ApiAuth) 
 
     # Hot-reload the bot with new token
     try:
-        from techannel_push.main import restart_bot_with_token
+        # Get reference to main module's polling task
+        import techannel_push.main as main_module
 
-        result = await restart_bot_with_token(new_token)
-        if result["status"] == "ok":
-            return {"status": "ok", "message": "Bot token updated and bot reloaded successfully"}
+        old_bot = bot_module.bot
+
+        # Step 1: Stop old polling task if running
+        if settings.use_polling and main_module._polling_task is not None:
+            logger.info("Stopping old polling task...")
+            main_module._polling_task.cancel()
+            try:
+                await main_module._polling_task
+            except asyncio.CancelledError:
+                pass
+            main_module._polling_task = None
+            logger.info("Old polling task stopped")
+
+        # Step 2: Delete old webhook if in webhook mode
+        if old_bot is not None and not settings.use_polling:
+            try:
+                await old_bot.delete_webhook()
+                logger.info("Old webhook deleted")
+            except Exception as e:
+                logger.warning(f"Error deleting old webhook: {e}")
+
+        # Step 3: Reinitialize bot with new token
+        new_bot = await reinit_bot(new_token)
+        if new_bot is None:
+            logger.error("reinit_bot returned None")
+            return {"status": "error", "message": "Failed to initialize bot with new token"}
+
+        logger.info(f"Bot reinitialized: bot_module.bot = {bot_module.bot}")
+
+        # Step 4: Start new polling or set new webhook
+        if settings.use_polling:
+            logger.info("Starting new polling task...")
+            await new_bot.delete_webhook(drop_pending_updates=True)
+            main_module._polling_task = asyncio.create_task(dp.start_polling(new_bot))
+            logger.info("New polling task started")
         else:
-            return {"status": "warning", "message": f"Token saved but bot reload failed: {result['message']}"}
+            webhook_url = settings.webhook_url
+            if not webhook_url:
+                return {"status": "error", "message": "WEBHOOK_URL is required when USE_POLLING=false"}
+            await new_bot.set_webhook(
+                url=webhook_url,
+                secret_token=settings.webhook_secret or None,
+                drop_pending_updates=True,
+            )
+            logger.info(f"New webhook set to {webhook_url}")
+
+        logger.info("Bot hot-reload completed successfully")
+        return {"status": "ok", "message": "Bot token updated and bot reloaded successfully"}
+
     except Exception as e:
-        logger.error(f"Failed to hot-reload bot: {e}")
+        logger.error(f"Failed to hot-reload bot: {e}", exc_info=True)
         return {"status": "warning", "message": f"Token saved but bot reload failed: {str(e)}. Please restart manually."}
 
 

@@ -20,7 +20,8 @@ from techannel_push.api.routes import (
     settings_router,
     slots_router,
 )
-from techannel_push.bot.bot import bot, dp, setup_handlers, reinit_bot
+import techannel_push.bot.bot as bot_module
+from techannel_push.bot.bot import dp, setup_handlers, reinit_bot
 from techannel_push.config import get_settings
 from techannel_push.database import init_db
 from techannel_push.scheduler.scheduler import start_scheduler, stop_scheduler, sync_slot_jobs
@@ -120,18 +121,18 @@ async def lifespan(app: FastAPI):
     setup_handlers()
 
     # Start bot only if token is configured
-    if bot is not None:
+    if bot_module.bot is not None:
         if settings.use_polling:
             # Polling mode - for local development
             logger.info("Starting bot in POLLING mode (local dev)")
-            await bot.delete_webhook(drop_pending_updates=True)
-            _polling_task = asyncio.create_task(dp.start_polling(bot))
+            await bot_module.bot.delete_webhook(drop_pending_updates=True)
+            _polling_task = asyncio.create_task(dp.start_polling(bot_module.bot))
         else:
             # Webhook mode - for production
             webhook_url = settings.webhook_url
             if not webhook_url:
                 raise ValueError("WEBHOOK_URL is required when USE_POLLING=false")
-            await bot.set_webhook(
+            await bot_module.bot.set_webhook(
                 url=webhook_url,
                 secret_token=settings.webhook_secret or None,
                 drop_pending_updates=True,
@@ -151,7 +152,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     stop_scheduler()
 
-    if bot is not None:
+    if bot_module.bot is not None:
         if settings.use_polling and _polling_task:
             _polling_task.cancel()
             try:
@@ -159,9 +160,9 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
         else:
-            await bot.delete_webhook()
+            await bot_module.bot.delete_webhook()
 
-        await bot.session.close()
+        await bot_module.bot.session.close()
 
 
 # Create FastAPI app
@@ -232,7 +233,7 @@ else:
 async def webhook_handler(request: Request) -> dict:
     """Handle incoming Telegram updates via webhook."""
     # Check if bot is configured
-    if bot is None:
+    if bot_module.bot is None:
         return {"ok": False, "error": "Bot not configured"}
 
     # Only process if in webhook mode
@@ -249,7 +250,7 @@ async def webhook_handler(request: Request) -> dict:
     # Parse and process update
     data = await request.json()
     update = types.Update(**data)
-    await dp.feed_update(bot, update)
+    await dp.feed_update(bot_module.bot, update)
     return {"ok": True}
 
 

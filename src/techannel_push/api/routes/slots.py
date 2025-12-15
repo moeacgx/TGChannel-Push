@@ -67,7 +67,8 @@ async def clear_slot_messages(db, slot_id: int) -> int:
 
     Returns the number of messages cleared.
     """
-    from techannel_push.bot import bot
+    from techannel_push.bot import get_bot
+    bot = get_bot()
 
     # Get all active placements for this slot
     result = await db.execute(
