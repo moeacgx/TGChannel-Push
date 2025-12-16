@@ -7,7 +7,7 @@ from pathlib import Path
 
 def migrate():
     """Run migration to add new columns."""
-    db_path = Path(__file__).parent.parent / "data" / "techannel.db"
+    db_path = Path(__file__).parent.parent / "data" / "tgchannel.db"
 
     if not db_path.exists():
         print(f"Database not found at {db_path}")

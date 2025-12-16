@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  techannel-push:
+  tgchannel-push:
     build: .
-    container_name: techannel-push
+    container_name: tgchannel-push
     restart: unless-stopped
     ports:
       - "8000:8000"

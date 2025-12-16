@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 # Database path
-DB_PATH = Path("/app/data/techannel.db")
+DB_PATH = Path("/app/data/tgchannel.db")
 
 # For local development
 if not DB_PATH.exists():
-    DB_PATH = Path("data/techannel.db")
+    DB_PATH = Path("data/tgchannel.db")
 
 if not DB_PATH.exists():
     print(f"Error: Database not found at {DB_PATH}")

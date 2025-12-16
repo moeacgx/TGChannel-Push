@@ -45,7 +45,7 @@ export const getHealth = () => api.get('/health')
 // Channels
 export const getChannels = () => api.get('/channels')
 export const getChannel = (id) => api.get(`/channels/${id}`)
-export const deleteChannel = (id) => api.delete(`/channels/${id}`)
+export const deleTGChannel = (id) => api.delete(`/channels/${id}`)
 
 // Groups
 export const getGroups = () => api.get('/groups')

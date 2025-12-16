@@ -1,4 +1,4 @@
-# TeChannel-Push
+# TGChannel-Push
 
 Telegram 多频道广告置顶机器人 - 支持槽位管理、定时发布、自动删除
 
@@ -91,10 +91,10 @@ pm2 status
 pm2 logs
 
 # 只查看后端日志
-pm2 logs techannel-backend
+pm2 logs tgchannel-backend
 
 # 只查看前端日志
-pm2 logs techannel-frontend
+pm2 logs tgchannel-frontend
 ```
 
 #### PM2 常用命令
@@ -136,7 +136,7 @@ pm2 save
 
 ```bash
 # 启动后端
-python -m techannel_push
+python -m tgchannel_push
 
 # 另开终端启动前端
 cd web && npm run dev
@@ -148,8 +148,8 @@ cd web && npm run dev
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourname/TeChannel-push.git
-cd TeChannel-push
+git clone https://github.com/yourname/TGChannel-push.git
+cd TGChannel-push
 
 # 构建并启动
 docker-compose up -d
@@ -196,7 +196,7 @@ environment:
 ## 项目结构
 
 ```
-src/techannel_push/
+src/tgchannel_push/
 ├── main.py              # 应用入口
 ├── config.py            # 配置管理
 ├── database/            # 数据库相关

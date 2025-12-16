@@ -79,7 +79,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getChannels, deleteChannel } from '@/api'
+import { getChannels, deleTGChannel } from '@/api'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
@@ -98,7 +98,7 @@ const fetchChannels = async () => {
 
 const handleDelete = async (id) => {
   try {
-    await deleteChannel(id)
+    await deleTGChannel(id)
     ElMessage.success('频道已移除')
     fetchChannels()
   } catch (e) {

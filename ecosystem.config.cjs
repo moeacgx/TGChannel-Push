@@ -1,10 +1,10 @@
 module.exports = {
   apps: [
     {
-      name: 'techannel-backend',
+      name: 'tgchannel-backend',
       cwd: __dirname,
       script: 'venv/Scripts/python.exe',
-      args: '-m techannel_push',
+      args: '-m tgchannel_push',
       interpreter: 'none',
       env: {
         PYTHONIOENCODING: 'utf-8',
@@ -20,7 +20,7 @@ module.exports = {
       merge_logs: true
     },
     {
-      name: 'techannel-frontend',
+      name: 'tgchannel-frontend',
       cwd: __dirname + '/web',
       script: 'node_modules/vite/bin/vite.js',
       interpreter: 'node',

@@ -5,7 +5,7 @@
       <el-aside width="220px" class="sidebar">
         <div class="logo">
           <el-icon :size="24"><Promotion /></el-icon>
-          <span>TeChannel-Push</span>
+          <span>TGChannel-Push</span>
         </div>
         <el-menu
           :default-active="$route.path"
