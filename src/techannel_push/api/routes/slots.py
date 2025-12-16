@@ -26,6 +26,7 @@ class SlotCreate(BaseModel):
 
     group_id: int
     slot_index: int
+    name: str | None = None  # Slot name (optional)
     slot_type: str = "fixed"  # fixed / random
     publish_cron: str
     delete_mode: str = "none"  # none / cron / after_seconds
@@ -36,6 +37,7 @@ class SlotCreate(BaseModel):
 class SlotUpdate(BaseModel):
     """Slot update model."""
 
+    name: str | None = None  # Slot name (optional)
     slot_type: str | None = None
     enabled: bool | None = None
     publish_cron: str | None = None
@@ -50,6 +52,7 @@ class SlotResponse(BaseModel):
     id: int
     group_id: int
     slot_index: int
+    name: str | None  # Slot name (optional)
     slot_type: str
     enabled: bool
     publish_cron: str
@@ -141,6 +144,7 @@ async def create_slot(data: SlotCreate, db: DbSession, _auth: ApiAuth) -> Slot:
     slot = Slot(
         group_id=data.group_id,
         slot_index=data.slot_index,
+        name=data.name,
         slot_type=data.slot_type,
         publish_cron=data.publish_cron,
         delete_mode=data.delete_mode,
@@ -175,6 +179,8 @@ async def update_slot(slot_id: int, data: SlotUpdate, db: DbSession, _auth: ApiA
     if not slot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found")
 
+    if data.name is not None:
+        slot.name = data.name
     if data.slot_type is not None:
         slot.slot_type = data.slot_type
     if data.enabled is not None:

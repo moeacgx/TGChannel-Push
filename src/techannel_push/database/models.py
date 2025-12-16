@@ -86,6 +86,7 @@ class Slot(Base):
         Integer, ForeignKey("channel_groups.id", ondelete="CASCADE"), nullable=False
     )
     slot_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..N
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Slot name (optional)
     slot_type: Mapped[str] = mapped_column(Text, default="fixed")  # fixed / random
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     publish_cron: Mapped[str] = mapped_column(Text, nullable=False)  # Cron expression (Beijing time)

@@ -44,6 +44,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="slot_index" label="序号" width="80" />
+        <el-table-column prop="name" label="名称" min-width="120">
+          <template #default="{ row }">
+            <span v-if="row.name">{{ row.name }}</span>
+            <span v-else style="color: #909399">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="slot_type" label="类型" width="100">
           <template #default="{ row }">
             <el-tag :type="row.slot_type === 'fixed' ? 'primary' : 'warning'" size="small">
@@ -115,6 +121,9 @@
           <el-input-number v-model="form.slot_index" :min="1" :max="99" :disabled="!!editingSlot" />
           <span style="margin-left: 10px; color: #909399;">同一分组内不能重复</span>
         </el-form-item>
+        <el-form-item label="槽位名称">
+          <el-input v-model="form.name" placeholder="可选，便于识别槽位用途" maxlength="50" show-word-limit />
+        </el-form-item>
         <el-form-item label="槽位类型" required>
           <el-radio-group v-model="form.slot_type">
             <el-radio value="fixed">固定（单个素材）</el-radio>
@@ -172,6 +181,7 @@ const editingSlot = ref(null)
 const form = ref({
   group_id: null,
   slot_index: 1,
+  name: '',
   slot_type: 'fixed',
   publish_cron: '0 9 * * *',
   delete_mode: 'none',
@@ -229,6 +239,7 @@ const showCreateDialog = () => {
   form.value = {
     group_id: filterGroupId.value || (groups.value[0]?.id || null),
     slot_index: 1,
+    name: '',
     slot_type: 'fixed',
     publish_cron: '0 9 * * *',
     delete_mode: 'none',
@@ -243,6 +254,7 @@ const showEditDialog = (slot) => {
   form.value = {
     group_id: slot.group_id,
     slot_index: slot.slot_index,
+    name: slot.name || '',
     slot_type: slot.slot_type,
     publish_cron: slot.publish_cron,
     delete_mode: slot.delete_mode,
@@ -266,6 +278,7 @@ const handleSubmit = async () => {
   try {
     const data = {
       ...form.value,
+      name: form.value.name?.trim() || null,
       delete_cron: form.value.delete_mode === 'cron' ? form.value.delete_cron : null,
       delete_after_seconds: form.value.delete_mode === 'after_seconds' ? form.value.delete_after_seconds : null
     }
