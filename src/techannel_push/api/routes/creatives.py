@@ -13,6 +13,7 @@ router = APIRouter(prefix="/creatives", tags=["creatives"])
 class CreativeUpdate(BaseModel):
     """Creative update model."""
 
+    name: str | None = None  # Creative name (optional)
     slot_id: int | None = None
     enabled: bool | None = None
     caption: str | None = None
@@ -24,6 +25,7 @@ class CreativeResponse(BaseModel):
 
     id: int
     slot_id: int | None
+    name: str | None  # Creative name (optional)
     enabled: bool
     source_chat_id: int
     source_message_id: int
@@ -80,6 +82,9 @@ async def update_creative(
     creative = result.scalar_one_or_none()
     if not creative:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Creative not found")
+
+    if data.name is not None:
+        creative.name = data.name
 
     if data.slot_id is not None:
         # Verify slot exists

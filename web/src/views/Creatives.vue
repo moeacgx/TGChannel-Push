@@ -38,6 +38,12 @@
 
       <el-table :data="creatives" style="width: 100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column prop="name" label="名称" min-width="120">
+          <template #default="{ row }">
+            <span v-if="row.name">{{ row.name }}</span>
+            <span v-else style="color: #909399">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="类型" width="100">
           <template #default="{ row }">
             <el-tag :type="getMediaTagType(row.media_type)" size="small">
@@ -121,6 +127,10 @@
         </el-descriptions>
 
         <el-form :model="editForm" label-width="100px">
+          <el-form-item label="素材名称">
+            <el-input v-model="editForm.name" placeholder="可选，便于识别素材用途" maxlength="50" show-word-limit />
+          </el-form-item>
+
           <el-form-item label="启用状态">
             <el-switch v-model="editForm.enabled" />
           </el-form-item>
@@ -288,6 +298,7 @@ const bindSlotId = ref(null)
 const editDialogVisible = ref(false)
 const editingCreative = ref(null)
 const editForm = ref({
+  name: '',
   enabled: true,
   caption: ''
 })
@@ -481,6 +492,7 @@ const fetchGroups = async () => {
 const showEditDialog = (creative) => {
   editingCreative.value = creative
   editForm.value = {
+    name: creative.name || '',
     enabled: creative.enabled,
     caption: creative.caption || ''
   }
@@ -519,6 +531,7 @@ const handleSaveEdit = async () => {
   submitting.value = true
   try {
     const data = {
+      name: editForm.value.name?.trim() || null,
       enabled: editForm.value.enabled,
       caption: editForm.value.caption || null,
       inline_keyboard_json: parsedButtons.value.length > 0

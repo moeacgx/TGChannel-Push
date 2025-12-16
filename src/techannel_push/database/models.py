@@ -118,6 +118,7 @@ class AdCreative(Base):
     slot_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("slots.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Creative name (optional)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     source_chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_message_id: Mapped[int] = mapped_column(Integer, nullable=False)
