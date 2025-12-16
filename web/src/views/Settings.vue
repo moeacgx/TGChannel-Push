@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>系统设置</span>
+          <span><el-icon style="margin-right: 8px; vertical-align: middle;"><Setting /></el-icon>系统设置</span>
         </div>
       </template>
 
@@ -132,7 +132,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { View, Hide, CircleCheck, CircleClose, Warning } from '@element-plus/icons-vue'
+import { View, Hide, CircleCheck, CircleClose, Warning, Setting } from '@element-plus/icons-vue'
 import api, { setApiToken } from '../api'
 
 const loading = ref(false)
