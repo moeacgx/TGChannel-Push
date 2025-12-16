@@ -2,6 +2,11 @@
 
 Telegram 多频道广告置顶机器人 - 支持槽位管理、定时发布、自动删除
 
+## 📢 交流群
+
+- **TG 频道**：[https://t.me/zhanzhangck](https://t.me/zhanzhangck)
+- **站长交流群**：[https://t.me/vpsbbq](https://t.me/vpsbbq)
+
 ## 功能特性
 
 - 🔄 **槽位管理**：固定槽位 + 随机槽位，每个槽位独立调度
