@@ -37,6 +37,7 @@
 |------|------|------|
 | `id` | INTEGER PK | 主键 |
 | `group_id` | INTEGER FK | 所属分组 |
+| `name` | TEXT | 槽位名称（可选，便于识别用途）|
 | `slot_index` | INTEGER | 槽位序号（1..N）|
 | `slot_type` | TEXT | 类型：fixed / random |
 | `enabled` | BOOLEAN | 是否启用 |
@@ -54,6 +55,7 @@
 |------|------|------|
 | `id` | INTEGER PK | 主键 |
 | `slot_id` | INTEGER FK | 绑定槽位（可选，未绑定时为素材库）|
+| `name` | TEXT | 素材名称（可选，便于识别用途）|
 | `enabled` | BOOLEAN | 是否启用 |
 | `source_chat_id` | BIGINT | 源消息所在 chat_id |
 | `source_message_id` | INTEGER | 源消息 message_id |

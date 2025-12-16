@@ -33,6 +33,7 @@
 
 ### Slot（槽位=独立任务）
 - `group_id`
+- `name`（可选，便于识别槽位用途）
 - `index`（1..N，槽位序号）
 - `type`：fixed / random
 - `enabled`：true/false（暂停/继续）
@@ -44,6 +45,7 @@
 
 ### AdCreative（广告配置）
 - `slot_id`
+- `name`（可选，便于识别素材用途）
 - `source_chat_id`（管理员私聊 chat id）
 - `source_message_id`（源消息 id）
 - `render_mode`：copy_message / resend (预留)
@@ -78,13 +80,14 @@
    - `pinChatMessage` 置顶
    - 更新 Placement（记录新 message_id）
 
-### 3.3 删除“已置顶 xxx”系统提醒
+### 3.3 删除"已置顶 xxx"系统提醒
 `pinChatMessage` 会在频道产生一条系统提示消息（service message），会影响观感。
 处理方式：
 - Bot 必须是频道管理员且有删除消息权限；
-- 通过监听 `channel_post`（或 `message`）更新，捕捉到“pinned_message 变更/服务消息”后立即 `deleteMessage` 删除该提醒消息。
-
-> 注意：Bot API 不会在 `pinChatMessage` 响应里直接给你这条服务消息的 id，所以必须靠更新流捕捉。
+- 在 `pinChatMessage` 后，尝试删除 `message_id + 1`（通常是置顶服务消息）；
+- 为安全起见，先用 `copyMessage` 测试该消息是否为服务消息：
+  - 如果复制成功，说明是普通消息，不应删除（删除复制产生的消息）
+  - 如果复制失败，说明是服务消息，可以安全删除
 
 ### 3.4 自动删除（保持频道整洁）
 每个槽位都有自己的删除策略：
