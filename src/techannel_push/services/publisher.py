@@ -1,5 +1,6 @@
 """Publisher service - handles message publishing to channels."""
 
+import asyncio
 import json
 import logging
 
@@ -65,6 +66,20 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
             message_id=message_id,
             disable_notification=True,
         )
+
+        # Try to delete the "pinned message" service notification
+        # The service message ID is usually the pinned message ID + 1
+        await asyncio.sleep(0.5)  # Small delay to ensure service message is created
+        try:
+            await bot.delete_message(
+                chat_id=channel.tg_chat_id,
+                message_id=message_id + 1,
+            )
+            logger.debug(f"Deleted pin service message {message_id + 1}")
+        except Exception:
+            # Service message might not exist or have different ID, ignore
+            pass
+
     except Exception as e:
         logger.warning(f"Failed to pin message: {e}")
 
