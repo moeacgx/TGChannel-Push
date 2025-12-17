@@ -125,6 +125,22 @@ pm2 startup
 pm2 save
 ```
 
+#### 更新升级
+
+```bash
+# 拉取最新代码
+git pull
+
+# 更新 Python 依赖
+pip install -e .
+
+# 更新前端依赖并重新构建
+cd web && npm install && npm run build && cd ..
+
+# 重启服务
+pm2 restart all
+```
+
 ### 4. Web 面板登录
 
 - 后端 API: http://localhost:8000
@@ -197,6 +213,19 @@ environment:
 数据自动保存在项目目录下：
 - `./data/` - 数据库文件
 - `./logs/` - 日志文件
+
+### 更新升级
+
+```bash
+# 拉取最新代码
+git pull
+
+# 重新构建并启动（会自动更新依赖）
+docker-compose up -d --build
+
+# 或者如果使用预构建镜像
+docker-compose pull && docker-compose up -d
+```
 
 ## 项目结构
 
