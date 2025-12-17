@@ -1,5 +1,6 @@
 """Publish job - executes slot publishing task."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -161,6 +162,8 @@ async def publish_to_channel_with_dedup(
     session, slot: Slot, creative: AdCreative, channel: Channel
 ) -> None:
     """Publish a creative to a channel, replacing old message if exists."""
+    logger.info(f"Processing channel {channel.id} ({channel.title}) for slot {slot.id}")
+
     # Get existing placement for this channel-slot combination
     result = await session.execute(
         select(Placement)
@@ -170,14 +173,20 @@ async def publish_to_channel_with_dedup(
     placement = result.scalar_one_or_none()
 
     # Delete old message if exists (always delete before publishing new one)
-    if placement and placement.message_id and placement.deleted_at is None:
-        try:
-            await delete_old_message(channel.tg_chat_id, placement.message_id)
-            logger.info(f"Deleted old message {placement.message_id} from channel {channel.id}")
-        except Exception as e:
-            logger.warning(f"Failed to delete old message: {e}")
-        # Mark as deleted regardless of success (message might already be gone)
-        placement.deleted_at = datetime.now(ZoneInfo(settings.timezone))
+    if placement:
+        logger.info(f"Found existing placement: message_id={placement.message_id}, deleted_at={placement.deleted_at}")
+        if placement.message_id and placement.deleted_at is None:
+            try:
+                await delete_old_message(channel.tg_chat_id, placement.message_id)
+                logger.info(f"Deleted old message {placement.message_id} from channel {channel.id}")
+            except Exception as e:
+                logger.warning(f"Failed to delete old message: {e}")
+            # Mark as deleted regardless of success (message might already be gone)
+            placement.deleted_at = datetime.now(ZoneInfo(settings.timezone))
+        else:
+            logger.info(f"Skipping delete: message_id={placement.message_id}, deleted_at={placement.deleted_at}")
+    else:
+        logger.info(f"No existing placement for channel {channel.id}, slot {slot.id}")
 
     # Publish new message
     try:
@@ -215,7 +224,7 @@ async def publish_to_channel_with_dedup(
         )
         session.add(log)
 
-        logger.info(f"Published creative {creative.id} to channel {channel.id}")
+        logger.info(f"Published creative {creative.id} to channel {channel.id}, message_id={message_id}")
 
     except Exception as e:
         # Log failure
