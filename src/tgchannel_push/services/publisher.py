@@ -11,11 +11,37 @@ from tgchannel_push.database.models import AdCreative, Channel
 logger = logging.getLogger(__name__)
 
 
+def _build_reply_markup(creative: AdCreative) -> InlineKeyboardMarkup | None:
+    """Build inline keyboard from creative's JSON config."""
+    if not creative.inline_keyboard_json:
+        return None
+
+    try:
+        keyboard_data = json.loads(creative.inline_keyboard_json)
+        buttons = []
+        for row in keyboard_data:
+            row_buttons = []
+            for btn in row:
+                if "url" in btn:
+                    row_buttons.append(InlineKeyboardButton(text=btn["text"], url=btn["url"]))
+                elif "callback_data" in btn:
+                    row_buttons.append(
+                        InlineKeyboardButton(
+                            text=btn["text"], callback_data=btn["callback_data"]
+                        )
+                    )
+            buttons.append(row_buttons)
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+    except Exception as e:
+        logger.warning(f"Failed to parse inline keyboard: {e}")
+        return None
+
+
 async def publish_creative_to_channel(creative: AdCreative, channel: Channel) -> int:
     """Publish a creative to a channel.
 
-    This uses copyMessage to preserve the original message format without
-    showing "Forwarded from" attribution.
+    If the creative has media_file_id, use send_photo/send_video etc. with the edited caption.
+    Otherwise, fall back to copy_message for the original format.
 
     Args:
         creative: The ad creative to publish
@@ -27,37 +53,43 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
     from tgchannel_push.bot import get_bot
     bot = get_bot()
 
-    # Build inline keyboard if specified
-    reply_markup = None
-    if creative.inline_keyboard_json:
-        try:
-            keyboard_data = json.loads(creative.inline_keyboard_json)
-            buttons = []
-            for row in keyboard_data:
-                row_buttons = []
-                for btn in row:
-                    if "url" in btn:
-                        row_buttons.append(InlineKeyboardButton(text=btn["text"], url=btn["url"]))
-                    elif "callback_data" in btn:
-                        row_buttons.append(
-                            InlineKeyboardButton(
-                                text=btn["text"], callback_data=btn["callback_data"]
-                            )
-                        )
-                buttons.append(row_buttons)
-            reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-        except Exception as e:
-            logger.warning(f"Failed to parse inline keyboard: {e}")
+    reply_markup = _build_reply_markup(creative)
+    caption = creative.caption or ""
 
-    # Copy message to channel
-    result = await bot.copy_message(
-        chat_id=channel.tg_chat_id,
-        from_chat_id=creative.source_chat_id,
-        message_id=creative.source_message_id,
-        reply_markup=reply_markup,
-    )
-
-    message_id = result.message_id
+    # If we have media_file_id, send using the appropriate method with edited caption
+    if creative.media_file_id and creative.media_type:
+        message_id = await _send_media_message(
+            bot, channel.tg_chat_id, creative, caption, reply_markup
+        )
+    elif creative.has_media:
+        # Has media but no file_id saved, fall back to copy_message
+        # (This is for backward compatibility with old records)
+        result = await bot.copy_message(
+            chat_id=channel.tg_chat_id,
+            from_chat_id=creative.source_chat_id,
+            message_id=creative.source_message_id,
+            caption=caption if caption else None,
+            reply_markup=reply_markup,
+        )
+        message_id = result.message_id
+    else:
+        # Text-only message
+        if caption:
+            result = await bot.send_message(
+                chat_id=channel.tg_chat_id,
+                text=caption,
+                reply_markup=reply_markup,
+            )
+            message_id = result.message_id
+        else:
+            # No caption, no media - just copy the original
+            result = await bot.copy_message(
+                chat_id=channel.tg_chat_id,
+                from_chat_id=creative.source_chat_id,
+                message_id=creative.source_message_id,
+                reply_markup=reply_markup,
+            )
+            message_id = result.message_id
 
     # Pin the message
     try:
@@ -68,14 +100,61 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
         )
 
         # Try to delete the "pinned message" service notification
-        # The service message ID is usually the pinned message ID + 1
-        await asyncio.sleep(0.5)  # Small delay to ensure service message is created
+        await asyncio.sleep(0.5)
         await _try_delete_pin_service_message(bot, channel.tg_chat_id, message_id + 1)
 
     except Exception as e:
         logger.warning(f"Failed to pin message: {e}")
 
     return message_id
+
+
+async def _send_media_message(
+    bot, chat_id: int, creative: AdCreative, caption: str, reply_markup
+) -> int:
+    """Send media message using the appropriate method based on media_type."""
+    media_type = creative.media_type
+    file_id = creative.media_file_id
+
+    if media_type == "photo":
+        result = await bot.send_photo(
+            chat_id=chat_id,
+            photo=file_id,
+            caption=caption or None,
+            reply_markup=reply_markup,
+        )
+    elif media_type == "video":
+        result = await bot.send_video(
+            chat_id=chat_id,
+            video=file_id,
+            caption=caption or None,
+            reply_markup=reply_markup,
+        )
+    elif media_type == "animation":
+        result = await bot.send_animation(
+            chat_id=chat_id,
+            animation=file_id,
+            caption=caption or None,
+            reply_markup=reply_markup,
+        )
+    elif media_type == "document":
+        result = await bot.send_document(
+            chat_id=chat_id,
+            document=file_id,
+            caption=caption or None,
+            reply_markup=reply_markup,
+        )
+    else:
+        # Unknown media type, try copy_message as fallback
+        result = await bot.copy_message(
+            chat_id=chat_id,
+            from_chat_id=creative.source_chat_id,
+            message_id=creative.source_message_id,
+            caption=caption or None,
+            reply_markup=reply_markup,
+        )
+
+    return result.message_id
 
 
 async def _try_delete_pin_service_message(bot, chat_id: int, message_id: int) -> None:

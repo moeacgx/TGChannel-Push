@@ -148,8 +148,18 @@
               :placeholder="editingCreative.has_media ? '图片/视频的文字说明' : '消息文字内容'"
             />
             <div style="font-size: 12px; color: #909399; margin-top: 5px;">
-              {{ editingCreative.has_media ? '媒体的 caption（可选）' : '纯文字消息内容' }}
+              支持 Telegram HTML 格式：
+              <code>&lt;b&gt;粗体&lt;/b&gt;</code>
+              <code>&lt;i&gt;斜体&lt;/i&gt;</code>
+              <code>&lt;u&gt;下划线&lt;/u&gt;</code>
+              <code>&lt;s&gt;删除线&lt;/s&gt;</code>
+              <code>&lt;code&gt;代码&lt;/code&gt;</code>
+              <code>&lt;a href="URL"&gt;链接&lt;/a&gt;</code>
             </div>
+          </el-form-item>
+
+          <el-form-item v-if="editForm.caption" label="内容预览">
+            <div class="caption-preview" v-html="formatTelegramHtml(editForm.caption)"></div>
           </el-form-item>
 
           <el-divider content-position="left">
@@ -359,6 +369,43 @@ const getMediaTagType = (mediaType) => {
     animation: 'primary'
   }
   return types[mediaType] || 'info'
+}
+
+// Format Telegram HTML for preview (sanitized)
+const formatTelegramHtml = (text) => {
+  if (!text) return ''
+
+  // Escape HTML first to prevent XSS, then convert Telegram tags
+  let escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Convert Telegram HTML tags back (safe subset)
+  // Bold
+  escaped = escaped.replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/gs, '<b>$1</b>')
+  escaped = escaped.replace(/&lt;strong&gt;(.*?)&lt;\/strong&gt;/gs, '<strong>$1</strong>')
+  // Italic
+  escaped = escaped.replace(/&lt;i&gt;(.*?)&lt;\/i&gt;/gs, '<i>$1</i>')
+  escaped = escaped.replace(/&lt;em&gt;(.*?)&lt;\/em&gt;/gs, '<em>$1</em>')
+  // Underline
+  escaped = escaped.replace(/&lt;u&gt;(.*?)&lt;\/u&gt;/gs, '<u>$1</u>')
+  // Strikethrough
+  escaped = escaped.replace(/&lt;s&gt;(.*?)&lt;\/s&gt;/gs, '<s>$1</s>')
+  escaped = escaped.replace(/&lt;strike&gt;(.*?)&lt;\/strike&gt;/gs, '<s>$1</s>')
+  escaped = escaped.replace(/&lt;del&gt;(.*?)&lt;\/del&gt;/gs, '<s>$1</s>')
+  // Code
+  escaped = escaped.replace(/&lt;code&gt;(.*?)&lt;\/code&gt;/gs, '<code>$1</code>')
+  // Pre
+  escaped = escaped.replace(/&lt;pre&gt;(.*?)&lt;\/pre&gt;/gs, '<pre>$1</pre>')
+  // Links - be careful with href
+  escaped = escaped.replace(/&lt;a href=&quot;(https?:\/\/[^&]+)&quot;&gt;(.*?)&lt;\/a&gt;/gs, '<a href="$1" target="_blank" rel="noopener">$2</a>')
+  escaped = escaped.replace(/&lt;a href='(https?:\/\/[^']+)'&gt;(.*?)&lt;\/a&gt;/gs, '<a href="$1" target="_blank" rel="noopener">$2</a>')
+
+  // Convert newlines to <br>
+  escaped = escaped.replace(/\n/g, '<br>')
+
+  return escaped
 }
 
 // Parse simple button format to JSON
@@ -662,5 +709,44 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.caption-preview {
+  width: 100%;
+  min-height: 60px;
+  padding: 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.caption-preview code {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+}
+
+.caption-preview pre {
+  background: #2d2d2d;
+  color: #f8f8f2;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.caption-preview a {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.caption-preview a:hover {
+  text-decoration: underline;
 }
 </style>
