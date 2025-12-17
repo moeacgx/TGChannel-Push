@@ -7,6 +7,16 @@ import logging
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tgchannel_push.database.models import AdCreative, Channel
+from tgchannel_push.services.telegram_utils import (
+    copy_message_safe,
+    delete_message_safe,
+    pin_message_safe,
+    send_animation_safe,
+    send_document_safe,
+    send_message_safe,
+    send_photo_safe,
+    send_video_safe,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +53,8 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
     If the creative has media_file_id, use send_photo/send_video etc. with the edited caption.
     Otherwise, fall back to copy_message for the original format.
 
+    Uses retry mechanism to handle Telegram rate limiting.
+
     Args:
         creative: The ad creative to publish
         channel: The target channel
@@ -64,7 +76,8 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
     elif creative.has_media:
         # Has media but no file_id saved, fall back to copy_message
         # (This is for backward compatibility with old records)
-        result = await bot.copy_message(
+        result = await copy_message_safe(
+            bot,
             chat_id=channel.tg_chat_id,
             from_chat_id=creative.source_chat_id,
             message_id=creative.source_message_id,
@@ -75,7 +88,8 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
     else:
         # Text-only message
         if caption:
-            result = await bot.send_message(
+            result = await send_message_safe(
+                bot,
                 chat_id=channel.tg_chat_id,
                 text=caption,
                 reply_markup=reply_markup,
@@ -83,7 +97,8 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
             message_id = result.message_id
         else:
             # No caption, no media - just copy the original
-            result = await bot.copy_message(
+            result = await copy_message_safe(
+                bot,
                 chat_id=channel.tg_chat_id,
                 from_chat_id=creative.source_chat_id,
                 message_id=creative.source_message_id,
@@ -91,20 +106,12 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
             )
             message_id = result.message_id
 
-    # Pin the message
-    try:
-        await bot.pin_chat_message(
-            chat_id=channel.tg_chat_id,
-            message_id=message_id,
-            disable_notification=True,
-        )
+    # Pin the message (with retry)
+    await pin_message_safe(bot, channel.tg_chat_id, message_id, disable_notification=True)
 
-        # Try to delete the "pinned message" service notification
-        await asyncio.sleep(0.5)
-        await _try_delete_pin_service_message(bot, channel.tg_chat_id, message_id + 1)
-
-    except Exception as e:
-        logger.warning(f"Failed to pin message: {e}")
+    # Try to delete the "pinned message" service notification
+    await asyncio.sleep(0.5)
+    await _try_delete_pin_service_message(bot, channel.tg_chat_id, message_id + 1)
 
     return message_id
 
@@ -112,33 +119,40 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
 async def _send_media_message(
     bot, chat_id: int, creative: AdCreative, caption: str, reply_markup
 ) -> int:
-    """Send media message using the appropriate method based on media_type."""
+    """Send media message using the appropriate method based on media_type.
+
+    Uses retry mechanism to handle Telegram rate limiting.
+    """
     media_type = creative.media_type
     file_id = creative.media_file_id
 
     if media_type == "photo":
-        result = await bot.send_photo(
+        result = await send_photo_safe(
+            bot,
             chat_id=chat_id,
             photo=file_id,
             caption=caption or None,
             reply_markup=reply_markup,
         )
     elif media_type == "video":
-        result = await bot.send_video(
+        result = await send_video_safe(
+            bot,
             chat_id=chat_id,
             video=file_id,
             caption=caption or None,
             reply_markup=reply_markup,
         )
     elif media_type == "animation":
-        result = await bot.send_animation(
+        result = await send_animation_safe(
+            bot,
             chat_id=chat_id,
             animation=file_id,
             caption=caption or None,
             reply_markup=reply_markup,
         )
     elif media_type == "document":
-        result = await bot.send_document(
+        result = await send_document_safe(
+            bot,
             chat_id=chat_id,
             document=file_id,
             caption=caption or None,
@@ -146,7 +160,8 @@ async def _send_media_message(
         )
     else:
         # Unknown media type, try copy_message as fallback
-        result = await bot.copy_message(
+        result = await copy_message_safe(
+            bot,
             chat_id=chat_id,
             from_chat_id=creative.source_chat_id,
             message_id=creative.source_message_id,
@@ -164,24 +179,23 @@ async def _try_delete_pin_service_message(bot, chat_id: int, message_id: int) ->
     Service messages cannot be copied, so if copy succeeds, it's a regular message
     and we should NOT delete it.
     """
+    from tgchannel_push.services.telegram_utils import with_retry
+
     try:
         # Try to copy the message - service messages cannot be copied
-        copied = await bot.copy_message(
+        copied = await with_retry(
+            bot.copy_message,
             chat_id=chat_id,
             from_chat_id=chat_id,
             message_id=message_id,
         )
         # Copy succeeded - this is a regular message, delete the copy and keep original
-        await bot.delete_message(chat_id=chat_id, message_id=copied.message_id)
+        await delete_message_safe(bot, chat_id, copied.message_id)
         logger.debug(f"Message {message_id} is a regular message, not deleting")
     except Exception:
         # Copy failed - likely a service message or doesn't exist, try to delete
-        try:
-            await bot.delete_message(chat_id=chat_id, message_id=message_id)
-            logger.debug(f"Deleted pin service message {message_id}")
-        except Exception:
-            # Message doesn't exist or can't be deleted, ignore
-            pass
+        await delete_message_safe(bot, chat_id, message_id)
+        logger.debug(f"Attempted to delete pin service message {message_id}")
 
 
 async def unpin_message(channel: Channel, message_id: int) -> None:

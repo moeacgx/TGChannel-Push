@@ -87,8 +87,11 @@ async def execute_fixed_slot(
     session, slot: Slot, creative: AdCreative, channels: list[Channel]
 ) -> None:
     """Execute publishing for a fixed slot (same creative to all channels)."""
-    for channel in channels:
+    for i, channel in enumerate(channels):
         await publish_to_channel_with_dedup(session, slot, creative, channel)
+        # Small delay between channels to avoid rate limiting
+        if i < len(channels) - 1:
+            await asyncio.sleep(0.5)
 
 
 async def execute_random_slot(
@@ -122,6 +125,10 @@ async def execute_random_slot(
             logger.info(
                 f"All creatives already active in channel {channel.id}, skipping"
             )
+
+        # Small delay between channels to avoid rate limiting
+        if i < len(channels) - 1:
+            await asyncio.sleep(0.5)
 
 
 async def find_available_creative(
@@ -228,22 +235,17 @@ async def delete_old_message(chat_id: int, message_id: int) -> None:
     """Delete an old message from a channel.
 
     First unpins the message to prevent "Pinned: message deleted" notification residue,
-    then deletes the message.
+    then deletes the message. Uses retry mechanism to handle rate limiting.
     """
     from tgchannel_push.bot import get_bot
+    from tgchannel_push.services.telegram_utils import delete_message_safe, unpin_message_safe
+
     bot = get_bot()
 
     # First unpin to avoid "Pinned: message deleted" notification
-    try:
-        await bot.unpin_chat_message(chat_id=chat_id, message_id=message_id)
-        logger.debug(f"Unpinned message {message_id} from {chat_id}")
-    except Exception as e:
-        # Ignore unpin errors - message might not be pinned or already deleted
-        logger.debug(f"Could not unpin message {message_id}: {e}")
+    await unpin_message_safe(bot, chat_id, message_id)
+    logger.debug(f"Unpinned message {message_id} from {chat_id}")
 
     # Then delete the message
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        logger.warning(f"Failed to delete message {message_id} from {chat_id}: {e}")
-        raise
+    if not await delete_message_safe(bot, chat_id, message_id):
+        raise Exception(f"Failed to delete message {message_id}")

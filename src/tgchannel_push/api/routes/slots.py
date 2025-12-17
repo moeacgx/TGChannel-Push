@@ -12,8 +12,10 @@ from sqlalchemy.orm import selectinload
 
 from tgchannel_push.api.deps import ApiAuth, DbSession
 from tgchannel_push.config import get_settings
+from tgchannel_push.database import async_session_maker
 from tgchannel_push.database.models import Channel, ChannelGroup, Placement, Slot
 from tgchannel_push.scheduler.scheduler import sync_slot_jobs
+from tgchannel_push.services.telegram_utils import delete_message_safe, unpin_message_safe
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -69,48 +71,59 @@ async def clear_slot_messages(db, slot_id: int) -> int:
     """Clear all published messages for a slot from all channels.
 
     Returns the number of messages cleared.
+    Note: This is now a quick database operation. Actual message deletion
+    happens in the background via delete_slot_messages_background.
     """
-    from tgchannel_push.bot import get_bot
-    bot = get_bot()
+    now = datetime.now(ZoneInfo(settings.timezone))
 
-    # Get all active placements for this slot
+    # Get all active placements for this slot and mark them as deleted
     result = await db.execute(
-        select(Placement, Channel)
-        .join(Channel, Placement.channel_id == Channel.id)
+        select(Placement)
         .where(Placement.slot_id == slot_id)
         .where(Placement.deleted_at.is_(None))
         .where(Placement.message_id.isnot(None))
     )
-    placements = result.all()
+    placements = list(result.scalars().all())
 
-    cleared_count = 0
-    now = datetime.now(ZoneInfo(settings.timezone))
-
-    for placement, channel in placements:
-        try:
-            # First unpin to avoid "Pinned: message deleted" notification
-            try:
-                await bot.unpin_chat_message(
-                    chat_id=channel.tg_chat_id, message_id=placement.message_id
-                )
-                logger.debug(f"Unpinned message {placement.message_id} from channel {channel.id}")
-            except Exception as e:
-                logger.debug(f"Could not unpin message {placement.message_id}: {e}")
-
-            # Then delete the message
-            await bot.delete_message(
-                chat_id=channel.tg_chat_id, message_id=placement.message_id
-            )
-            logger.info(f"Deleted message {placement.message_id} from channel {channel.id}")
-            cleared_count += 1
-        except Exception as e:
-            logger.warning(f"Failed to delete message {placement.message_id}: {e}")
-
-        # Mark placement as deleted regardless of success
+    for placement in placements:
         placement.deleted_at = now
 
     await db.commit()
-    return cleared_count
+    return len(placements)
+
+
+async def delete_slot_messages_background(messages_to_delete: list[tuple[int, int]]) -> None:
+    """Background task to delete messages from Telegram with retry.
+
+    Args:
+        messages_to_delete: List of (chat_id, message_id) tuples
+    """
+    from tgchannel_push.bot import get_bot
+
+    try:
+        bot = get_bot()
+    except Exception as e:
+        logger.error(f"Cannot get bot for background deletion: {e}")
+        return
+
+    success_count = 0
+    fail_count = 0
+
+    for chat_id, message_id in messages_to_delete:
+        # Unpin first to avoid notification
+        await unpin_message_safe(bot, chat_id, message_id)
+
+        # Delete the message
+        if await delete_message_safe(bot, chat_id, message_id):
+            success_count += 1
+            logger.debug(f"Deleted message {message_id} from chat {chat_id}")
+        else:
+            fail_count += 1
+
+        # Small delay between operations to avoid rate limiting
+        await asyncio.sleep(0.3)
+
+    logger.info(f"Background deletion completed: {success_count} success, {fail_count} failed")
 
 
 @router.get("", response_model=list[SlotResponse])
@@ -205,23 +218,39 @@ async def update_slot(slot_id: int, data: SlotUpdate, db: DbSession, _auth: ApiA
 
 @router.delete("/{slot_id}")
 async def delete_slot(slot_id: int, db: DbSession, _auth: ApiAuth) -> dict:
-    """Delete a slot and clear all its published messages."""
+    """Delete a slot and schedule background deletion of its published messages."""
     result = await db.execute(select(Slot).where(Slot.id == slot_id))
     slot = result.scalar_one_or_none()
     if not slot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found")
 
-    # Clear all published messages for this slot
-    cleared_count = await clear_slot_messages(db, slot_id)
-    logger.info(f"Cleared {cleared_count} messages for slot {slot_id}")
+    # Collect messages to delete BEFORE deleting the slot
+    result = await db.execute(
+        select(Placement, Channel)
+        .join(Channel, Placement.channel_id == Channel.id)
+        .where(Placement.slot_id == slot_id)
+        .where(Placement.deleted_at.is_(None))
+        .where(Placement.message_id.isnot(None))
+    )
+    messages_to_delete = [
+        (channel.tg_chat_id, placement.message_id)
+        for placement, channel in result.all()
+    ]
+    message_count = len(messages_to_delete)
 
+    # Delete the slot (cascades to placements)
     await db.delete(slot)
     await db.commit()
 
     # Sync scheduler jobs
     asyncio.create_task(sync_slot_jobs())
 
-    return {"status": "ok", "message": f"Slot deleted, {cleared_count} messages cleared"}
+    # Start background deletion of messages
+    if messages_to_delete:
+        asyncio.create_task(delete_slot_messages_background(messages_to_delete))
+        logger.info(f"Slot {slot_id} deleted, {message_count} messages scheduled for background deletion")
+
+    return {"status": "ok", "message": f"Slot deleted, {message_count} messages being cleaned up in background"}
 
 
 @router.post("/{slot_id}/enable")
@@ -263,9 +292,8 @@ async def clear_slot(slot_id: int, db: DbSession, _auth: ApiAuth) -> dict:
     """Clear all published messages for a slot without deleting the slot itself.
 
     This will:
-    1. Unpin all pinned messages from this slot in all channels
-    2. Delete all messages from this slot in all channels
-    3. Mark all placements as deleted
+    1. Mark all placements as deleted in database (immediate)
+    2. Schedule background deletion of messages from Telegram
 
     The slot itself remains intact and can continue publishing.
     """
@@ -274,6 +302,30 @@ async def clear_slot(slot_id: int, db: DbSession, _auth: ApiAuth) -> dict:
     if not slot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found")
 
-    cleared_count = await clear_slot_messages(db, slot_id)
+    # Collect messages to delete
+    result = await db.execute(
+        select(Placement, Channel)
+        .join(Channel, Placement.channel_id == Channel.id)
+        .where(Placement.slot_id == slot_id)
+        .where(Placement.deleted_at.is_(None))
+        .where(Placement.message_id.isnot(None))
+    )
+    rows = result.all()
+    messages_to_delete = [
+        (channel.tg_chat_id, placement.message_id)
+        for placement, channel in rows
+    ]
 
-    return {"status": "ok", "message": f"{cleared_count} messages cleared"}
+    # Mark placements as deleted in database
+    now = datetime.now(ZoneInfo(settings.timezone))
+    for placement, _channel in rows:
+        placement.deleted_at = now
+    await db.commit()
+
+    message_count = len(messages_to_delete)
+
+    # Start background deletion of messages
+    if messages_to_delete:
+        asyncio.create_task(delete_slot_messages_background(messages_to_delete))
+
+    return {"status": "ok", "message": f"{message_count} messages being cleaned up in background"}
