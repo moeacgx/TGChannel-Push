@@ -82,6 +82,7 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
             from_chat_id=creative.source_chat_id,
             message_id=creative.source_message_id,
             caption=caption if caption else None,
+            parse_mode="HTML" if caption else None,
             reply_markup=reply_markup,
         )
         message_id = result.message_id
@@ -92,6 +93,7 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
                 bot,
                 chat_id=channel.tg_chat_id,
                 text=caption,
+                parse_mode="HTML",
                 reply_markup=reply_markup,
             )
             message_id = result.message_id
@@ -125,6 +127,7 @@ async def _send_media_message(
     """
     media_type = creative.media_type
     file_id = creative.media_file_id
+    parse_mode = "HTML" if caption else None
 
     if media_type == "photo":
         result = await send_photo_safe(
@@ -132,6 +135,7 @@ async def _send_media_message(
             chat_id=chat_id,
             photo=file_id,
             caption=caption or None,
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
     elif media_type == "video":
@@ -140,6 +144,7 @@ async def _send_media_message(
             chat_id=chat_id,
             video=file_id,
             caption=caption or None,
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
     elif media_type == "animation":
@@ -148,6 +153,7 @@ async def _send_media_message(
             chat_id=chat_id,
             animation=file_id,
             caption=caption or None,
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
     elif media_type == "document":
@@ -156,6 +162,7 @@ async def _send_media_message(
             chat_id=chat_id,
             document=file_id,
             caption=caption or None,
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
     else:
@@ -166,6 +173,7 @@ async def _send_media_message(
             from_chat_id=creative.source_chat_id,
             message_id=creative.source_message_id,
             caption=caption or None,
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
 

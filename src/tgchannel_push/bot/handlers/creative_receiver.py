@@ -6,6 +6,7 @@ import logging
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.utils.text_decorations import html_decoration
 
 from tgchannel_push.config import get_effective_admin_ids, get_settings
 from tgchannel_push.database import async_session_maker
@@ -20,6 +21,18 @@ router = Router(name="creative_receiver")
 def is_admin(user_id: int) -> bool:
     """Check if user is an admin."""
     return user_id in get_effective_admin_ids()
+
+
+def extract_html_text(text: str | None, entities: list | None) -> str:
+    """Extract HTML formatted text from message text and entities."""
+    if not text:
+        return ""
+    if not entities:
+        return text
+    try:
+        return html_decoration.unparse(text, entities)
+    except Exception:
+        return text
 
 
 @router.message(Command("start"), F.chat.type == "private")
@@ -124,29 +137,29 @@ async def on_private_message(message: Message) -> None:
         has_media = True
         media_type = "photo"
         media_file_id = message.photo[-1].file_id  # Get highest resolution
-        caption = message.caption or ""
-        caption_preview = caption[:100]
+        caption = extract_html_text(message.caption, message.caption_entities)
+        caption_preview = (message.caption or "")[:100]  # Preview uses plain text
     elif message.video:
         has_media = True
         media_type = "video"
         media_file_id = message.video.file_id
-        caption = message.caption or ""
-        caption_preview = caption[:100]
+        caption = extract_html_text(message.caption, message.caption_entities)
+        caption_preview = (message.caption or "")[:100]
     elif message.document:
         has_media = True
         media_type = "document"
         media_file_id = message.document.file_id
-        caption = message.caption or ""
-        caption_preview = caption[:100]
+        caption = extract_html_text(message.caption, message.caption_entities)
+        caption_preview = (message.caption or "")[:100]
     elif message.animation:
         has_media = True
         media_type = "animation"
         media_file_id = message.animation.file_id
-        caption = message.caption or ""
-        caption_preview = caption[:100]
+        caption = extract_html_text(message.caption, message.caption_entities)
+        caption_preview = (message.caption or "")[:100]
     elif message.text:
-        caption = message.text
-        caption_preview = caption[:100]
+        caption = extract_html_text(message.text, message.entities)
+        caption_preview = message.text[:100]
     else:
         await message.answer("⚠️ 不支持的消息类型")
         return
