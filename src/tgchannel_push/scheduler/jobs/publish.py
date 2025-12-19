@@ -67,6 +67,17 @@ async def execute_slot_publish(slot_id: int) -> None:
         )
         channels = list(result.scalars().all())
 
+        logger.info(
+            f"Slot {slot.id} group {slot.group_id} active channels={len(channels)}"
+        )
+        if channels:
+            preview = ", ".join(
+                f"{c.id}:{c.tg_chat_id}" for c in channels[:20]
+            )
+            if len(channels) > 20:
+                preview += ", ..."
+            logger.debug(f"Channels preview: {preview}")
+
         if not channels:
             logger.warning(f"Slot {slot_id} group has no active channels")
             return
@@ -89,7 +100,12 @@ async def execute_fixed_slot(
 ) -> None:
     """Execute publishing for a fixed slot (same creative to all channels)."""
     for i, channel in enumerate(channels):
-        await publish_to_channel_with_dedup(session, slot, creative, channel)
+        try:
+            await publish_to_channel_with_dedup(session, slot, creative, channel)
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error while processing channel {channel.id} ({channel.tg_chat_id}): {e}"
+            )
         # Small delay between channels to avoid rate limiting
         if i < len(channels) - 1:
             await asyncio.sleep(0.5)
@@ -121,7 +137,12 @@ async def execute_random_slot(
         )
 
         if creative:
-            await publish_to_channel_with_dedup(session, slot, creative, channel)
+            try:
+                await publish_to_channel_with_dedup(session, slot, creative, channel)
+            except Exception as e:
+                logger.exception(
+                    f"Unexpected error while processing channel {channel.id} ({channel.tg_chat_id}): {e}"
+                )
         else:
             logger.info(
                 f"All creatives already active in channel {channel.id}, skipping"
@@ -190,7 +211,9 @@ async def publish_to_channel_with_dedup(
 
     # Publish new message
     try:
-        message_id = await publish_creative_to_channel(creative, channel)
+        message_id, pin_ok, pin_error_message = await publish_creative_to_channel(
+            creative, channel
+        )
 
         now = datetime.now(ZoneInfo(settings.timezone))
 
@@ -203,7 +226,7 @@ async def publish_to_channel_with_dedup(
 
         placement.creative_id = creative.id
         placement.message_id = message_id
-        placement.is_pinned = True
+        placement.is_pinned = pin_ok
         placement.published_at = now
         placement.deleted_at = None
 
@@ -224,20 +247,72 @@ async def publish_to_channel_with_dedup(
         )
         session.add(log)
 
+        # Log pin result separately (publish can succeed while pin fails)
+        pin_log = OperationLog(
+            op_type="pin",
+            channel_id=channel.id,
+            slot_id=slot.id,
+            creative_id=creative.id,
+            message_id=message_id,
+            status="success" if pin_ok else "failed",
+            error_message=None if pin_ok else pin_error_message,
+        )
+        session.add(pin_log)
+
+        if not pin_ok and pin_error_message:
+            error_lower = pin_error_message.lower()
+            if any(
+                x in error_lower
+                for x in [
+                    "not enough rights",
+                    "forbidden",
+                    "chat_admin_required",
+                    "administrator rights",
+                    "not an administrator",
+                ]
+            ):
+                if channel.permissions_ok:
+                    channel.permissions_ok = False
+                    logger.warning(
+                        f"Channel {channel.id} seems to lack required permissions, marked permissions_ok=False"
+                    )
+
         logger.info(f"Published creative {creative.id} to channel {channel.id}, message_id={message_id}")
 
     except Exception as e:
         # Log failure
+        error_message = str(e)
         log = OperationLog(
             op_type="publish",
             channel_id=channel.id,
             slot_id=slot.id,
             creative_id=creative.id,
             status="failed",
-            error_message=str(e),
+            error_message=error_message,
         )
         session.add(log)
-        logger.error(f"Failed to publish to channel {channel.id}: {e}")
+        logger.error(
+            f"Failed to publish to channel {channel.id} ({channel.tg_chat_id}): {error_message}"
+        )
+
+        error_lower = error_message.lower()
+        if any(
+            x in error_lower
+            for x in [
+                "chat not found",
+                "bot was kicked",
+                "bot was blocked",
+                "have no rights to send",
+                "forbidden",
+            ]
+        ):
+            if channel.status != "left":
+                channel.status = "left"
+            if channel.permissions_ok:
+                channel.permissions_ok = False
+            logger.warning(
+                f"Channel {channel.id} marked as left/permissions_ok=False due to publish error"
+            )
 
 
 async def delete_old_message(chat_id: int, message_id: int) -> None:

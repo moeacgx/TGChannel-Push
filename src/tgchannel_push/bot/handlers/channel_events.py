@@ -29,6 +29,21 @@ async def on_bot_channel_status_change(event: ChatMemberUpdated) -> None:
         channel = result.scalar_one_or_none()
 
         if new_status in ("administrator", "member"):
+            permissions_ok = False
+            if new_status == "administrator":
+                permissions_ok = True
+                required_flags = ("can_post_messages", "can_delete_messages", "can_pin_messages")
+                missing_flags = []
+                for flag in required_flags:
+                    value = getattr(event.new_chat_member, flag, None)
+                    if value is False:
+                        missing_flags.append(flag)
+                        permissions_ok = False
+                if missing_flags:
+                    logger.warning(
+                        f"Bot is administrator in channel {chat.id} but missing permissions: {missing_flags}"
+                    )
+
             # Bot was added to channel
             if channel is None:
                 channel = Channel(
@@ -36,7 +51,7 @@ async def on_bot_channel_status_change(event: ChatMemberUpdated) -> None:
                     title=chat.title or "Unknown",
                     username=chat.username,
                     status="active",
-                    permissions_ok=new_status == "administrator",
+                    permissions_ok=permissions_ok,
                 )
                 session.add(channel)
                 logger.info(f"Bot added to channel: {chat.title} ({chat.id})")
@@ -44,7 +59,7 @@ async def on_bot_channel_status_change(event: ChatMemberUpdated) -> None:
                 channel.title = chat.title or channel.title
                 channel.username = chat.username
                 channel.status = "active"
-                channel.permissions_ok = new_status == "administrator"
+                channel.permissions_ok = permissions_ok
                 logger.info(f"Bot status updated in channel: {chat.title} ({chat.id})")
 
         elif new_status in ("left", "kicked"):

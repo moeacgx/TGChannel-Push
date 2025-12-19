@@ -47,7 +47,9 @@ def _build_reply_markup(creative: AdCreative) -> InlineKeyboardMarkup | None:
         return None
 
 
-async def publish_creative_to_channel(creative: AdCreative, channel: Channel) -> int:
+async def publish_creative_to_channel(
+    creative: AdCreative, channel: Channel
+) -> tuple[int, bool, str | None]:
     """Publish a creative to a channel.
 
     If the creative has media_file_id, use send_photo/send_video etc. with the edited caption.
@@ -60,7 +62,7 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
         channel: The target channel
 
     Returns:
-        The message_id of the published message
+        (message_id, pin_ok, pin_error_message)
     """
     from tgchannel_push.bot import get_bot
     bot = get_bot()
@@ -109,13 +111,15 @@ async def publish_creative_to_channel(creative: AdCreative, channel: Channel) ->
             message_id = result.message_id
 
     # Pin the message (with retry)
-    await pin_message_safe(bot, channel.tg_chat_id, message_id, disable_notification=True)
+    pin_ok, pin_error_message = await pin_message_safe(
+        bot, channel.tg_chat_id, message_id, disable_notification=True
+    )
 
     # Try to delete the "pinned message" service notification
     await asyncio.sleep(0.5)
     await _try_delete_pin_service_message(bot, channel.tg_chat_id, message_id + 1)
 
-    return message_id
+    return message_id, pin_ok, pin_error_message
 
 
 async def _send_media_message(

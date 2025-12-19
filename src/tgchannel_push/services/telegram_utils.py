@@ -126,8 +126,10 @@ async def copy_message_safe(bot, chat_id: int, **kwargs) -> Any:
     return await with_retry(bot.copy_message, chat_id=chat_id, **kwargs)
 
 
-async def pin_message_safe(bot, chat_id: int, message_id: int, disable_notification: bool = True) -> bool:
-    """Pin a message with retry."""
+async def pin_message_safe(
+    bot, chat_id: int, message_id: int, disable_notification: bool = True
+) -> tuple[bool, str | None]:
+    """Pin a message with retry, returns (ok, error_message)."""
     try:
         await with_retry(
             bot.pin_chat_message,
@@ -135,7 +137,8 @@ async def pin_message_safe(bot, chat_id: int, message_id: int, disable_notificat
             message_id=message_id,
             disable_notification=disable_notification,
         )
-        return True
+        return True, None
     except TelegramAPIError as e:
-        logger.warning(f"Failed to pin message {message_id}: {e}")
-        return False
+        error_message = str(e)
+        logger.warning(f"Failed to pin message {message_id} in {chat_id}: {error_message}")
+        return False, error_message
